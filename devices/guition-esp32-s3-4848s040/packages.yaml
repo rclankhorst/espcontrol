@@ -9,6 +9,7 @@
 substitutions:
   device_slug: "guition-esp32-s3-4848s040"
   firmware_manifest_slug: "guition-esp32-s3-4848s040"
+  battery_update_interval: "30s"
   firmware_version: "dev"
   screen_width: "480"
   screen_height: "480"
@@ -110,6 +111,7 @@ packages:
   # ---------------------------------------------------------------------------
   # Addons
   # ---------------------------------------------------------------------------
+  battery:         !include ../../common/addon/battery.yaml
   connectivity:    !include ../../common/addon/connectivity.yaml
   time_sync:       !include ../../common/addon/time.yaml
   backlight:       !include ../../common/addon/backlight.yaml

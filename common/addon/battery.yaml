@@ -1,0 +1,20 @@
+# =============================================================================
+# BATTERY - IP5306 battery level and charging status
+# =============================================================================
+# Reads the IP5306 battery management IC via I2C (default address 0x75).
+# Exposes a battery level sensor (0/25/50/75/100%) and a charging binary
+# sensor to Home Assistant.
+#
+# For devices with a named I2C bus, add an i2c_id substitution or override
+# this addon with a device-local package. Single-bus devices (like the
+# guition-esp32-s3-4848s040) work without an explicit i2c_id.
+# =============================================================================
+
+ip5306:
+  update_interval: ${battery_update_interval}
+  battery_level:
+    name: "Battery"
+    icon: mdi:battery
+  charging:
+    name: "Charging"
+    icon: mdi:battery-charging
