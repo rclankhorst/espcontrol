@@ -5,9 +5,8 @@
 Investigation date: 2026-09-12
 
 > Historical record: this page captures a desk study of whether battery
-> statistics can be tracked on the Guition ESP32-S3-4848S040. No physical
-> device was available to the investigation, so the hardware-presence question
-> at the end is explicitly unresolved. Device YAML under
+> statistics can be tracked on the Guition ESP32-S3-4848S040, plus the on-device
+> I2C scan that settled it on 2026-09-13. Device YAML under
 > `devices/guition-esp32-s3-4848s040/` remains the source of truth for current
 > pin assignments.
 
@@ -18,15 +17,19 @@ how few GPIOs the ESP32-S3 has left once the RGB panel is wired up?
 
 ## Outcome
 
-The pin budget is not the blocker, but it does eliminate one of the two
-approaches outright:
+**Not possible on this board without a hardware modification.** Both routes are
+closed, for different reasons:
 
 - **Analogue sense (battery voltage divider into an ADC pin): impossible.**
   There is no pin for it, and no pin can be freed without giving up the
-  display or a relay.
-- **Digital sense (an I2C battery gauge or PMIC): costs zero extra pins** and
-  is the only viable route. Whether it works comes down to a hardware question
-  that needs the physical board to answer.
+  display or a relay. This follows from the pin map alone.
+- **Digital sense (an I2C battery gauge or PMIC): costs zero extra pins**, and
+  was the only viable route — but an on-device I2C scan on 2026-09-13 found
+  nothing on the bus except the touchscreen. There is no battery IC to read.
+
+The pin budget alone did not settle the question; it only narrowed the feature
+to an I2C implementation. What closed it was the scan finding no I2C battery
+hardware. See "Scan Result" below.
 
 ## Pin Budget
 
@@ -146,69 +149,71 @@ working sensor would need wiring into that icon row plus, if the icon should
 be user-visible per device, a capability flag in
 `product/v2/devices/guition-esp32-s3-4848s040.json`.
 
-## The Unresolved Question
+## Scan Result (2026-09-13)
 
-**Does this particular board actually have battery-measurement hardware?**
+The board was flashed with `scan: true` added to the existing I2C bus and the
+boot log read. The complete result:
 
-The 4848S040 is a mains/USB-C powered panel. Multiple community sources
-describe a JST LiPo connector on the back of the PCB alongside the speaker and
-serial headers, and some report an IP5306 handling charge/boost. Those reports
-are inconsistent and several of the higher-ranking search hits are
-auto-generated marketing copy rather than hands-on teardowns, so they are not
-firm evidence. Board revisions of these Guition panels are known to differ in
-which parts are populated.
-
-Three outcomes are possible, and they cannot be distinguished from the repo:
-
-1. **An IP5306 (or similar I2C PMIC) is present and populated.** Battery
-   tracking is fully viable — fix the register decoding, wire the sensor into
-   the clock bar, done. Note that even in the best case the IP5306 only reports
-   in 25% steps, so the clock-bar icon would move in quarters and a percentage
-   sensor in Home Assistant would look coarse.
-2. **A charger is present but has no I2C telemetry** (a bare TP4056-class part,
-   for example). The panel would charge and run from a battery, but there is no
-   way to read state of charge: no I2C to query and no ADC pin to sense with.
-   Battery tracking would not be possible without hardware modification.
-3. **No battery circuitry is populated at all.** The connector may be an
-   unpopulated footprint.
-
-### How to settle it
-
-This takes one firmware build and about a minute on the physical device. Add a
-scan to the existing bus in
-`devices/guition-esp32-s3-4848s040/device/device.yaml`:
-
-```yaml
-i2c:
-  sda: GPIO19
-  scl:
-    number: 45
-    ignore_strapping_warning: true
-  scan: true
+```
+[C][i2c.idf:092]: I2C Bus:
+[C][i2c.idf:093]:   SDA Pin: GPIO19
+[C][i2c.idf:093]:   SCL Pin: GPIO45
+[C][i2c.idf:093]:   Frequency: 50000 Hz
+[C][i2c.idf:103]:   Recovery: bus successfully recovered
+[C][i2c.idf:113]: Results from bus scan:
+[C][i2c.idf:119]: Found device at address 0x5D
 ```
 
-Then read the boot log. The scan prints every responding address:
+`0x5D` is the GT911 touchscreen. It is the only device that answered. There is
+no IP5306 at `0x75`, and no other gauge or PMIC at any address.
 
-- `0x5D` or `0x14` alone - only the GT911 touchscreen answered. No I2C battery
-  IC on the bus; outcome 2 or 3 above.
-- `0x75` also present - an IP5306 is populated and outcome 1 applies.
-- Some other unexpected address - a different gauge or PMIC; identify it before
-  writing any driver.
+The bus itself is healthy — it enumerated and recovered cleanly, and the
+touchscreen responded — so this is a real absence rather than a failed scan.
+The 50 kHz bus clock is well below the IP5306's supported range and would not
+prevent it from acknowledging.
 
-A visual check of the board helps separate outcomes 2 and 3: look for whether
-the JST footprint is actually populated with a connector, and whether there is
-a charger IC next to it.
+### What this means
+
+Battery level and charging state cannot be reported on this board as it ships.
+The panel may still have a JST LiPo footprint and a charge/boost part, and may
+well run from a battery; what it does not have is any way to *tell the ESP32*
+what the battery is doing. There is no I2C telemetry to query and no free ADC
+pin to sense with.
+
+One caveat, noted for completeness rather than as a live hope: the scan was run
+on USB power. An IP5306 sourcing VIN from USB should enumerate with or without
+a cell attached, so a re-scan with a battery plugged in is very unlikely to
+change the result. It is a cheap check if certainty matters.
+
+The `feat-ip5306-battery` branch is therefore moot on this hardware. Its
+register-decoding bug (documented above) was never the reason it did not work —
+there was no chip for it to talk to.
+
+## If the Feature Is Still Wanted
+
+It would take a hardware modification. The pin analysis points to what is and
+is not worth attempting:
+
+- **Viable: add an I2C fuel gauge.** A MAX17048, LC709203F or similar wired to
+  the battery rail and to the existing `GPIO19`/`GPIO45` bus needs **no free
+  GPIOs** and would give a genuine state-of-charge reading — better resolution
+  than the IP5306's 25% steps would have offered. An I2C ADC such as an ADS1115
+  reading a divider on the battery rail works the same way. Both require
+  soldering to the bus and the battery rail, and neither is something the
+  project can ship as a firmware change.
+- **Not viable: anything needing an ESP32 pin.** A divider into an ADC input
+  has nowhere to land, as established in the pin budget above. This does not
+  become possible with a different firmware or a cleverer configuration.
+
+Any such modification is per-unit and would need gating behind a device
+capability flag so stock panels do not show a permanently unknown battery.
 
 ## Recommendation
 
-Do not build anything further until the I2C scan result is known. The pin
-analysis is settled and needs no device time; the hardware-presence question
-needs nothing but device time, and it determines whether there is a feature
-here at all.
+Close the feature for the stock 4848S040. Do not rebase or fix
+`feat-ip5306-battery` — the hardware it targets is not on this board, so the
+work has no destination.
 
-If the scan does find an IP5306, the follow-up work is well defined: rewrite
-the register decoding in the branch's `ip5306.cpp` against the upper
-nibble plus registers `0x70`/`0x71`, rebase `feat-ip5306-battery` onto current
-`main`, wire the sensor into the clock-bar icon row through
-`battery_status_set_icon()`, and gate the icon behind a device capability flag
-so panels without the hardware do not show a permanently unknown battery.
+`components/espcontrol/battery_status.h` on `main` stays as it is: harmless
+scaffolding, with no callers, that a future device with real battery hardware
+could use. Nothing needs to be removed.

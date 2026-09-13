@@ -12,4 +12,4 @@ subsystem page, playbook, or device YAML for live behavior and values.
   four-worker local check timing captured on 2026-07-12.
 - [4848S040 Battery Tracking](4848s040-battery-tracking-feasibility.md) -
   GPIO budget and I2C options for battery statistics on the 4-inch panel,
-  captured on 2026-09-12.
+  captured on 2026-09-12 and closed by an on-device I2C scan on 2026-09-13.
