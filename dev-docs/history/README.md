@@ -10,3 +10,6 @@ subsystem page, playbook, or device YAML for live behavior and values.
   record captured on 2026-07-11.
 - [Parallel Check Benchmark](parallel-check-benchmark.md) - sequential versus
   four-worker local check timing captured on 2026-07-12.
+- [4848S040 Power and Battery Saving Options](4848s040-power-saving-options.md) -
+  desk study of power-reduction levers, their limits, and enable/disable UX
+  captured on 2026-09-13.
